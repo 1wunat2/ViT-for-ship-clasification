@@ -30,7 +30,7 @@ model_default_args = dict(
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(device)
-wandb_project = "AMATH445_FinalProject_3"
+wandb_project = "LearningRate"
 
 class Args:
     batch_size = 1
@@ -43,6 +43,11 @@ class Args:
     output_dir = "/home/cwu/Documents/NathanProject/archive"
     resume_training = False
     saved_model_path = "./model_output/saved_models"
+
+    def __init__(self, lr=3e-4, n_epochs=10, batch_size=1) -> None:
+        self.learning_rate = lr
+        self.n_epochs = n_epochs
+        self.batch_size = batch_size
 
 args = Args()
 
@@ -64,12 +69,6 @@ class ShipDataset(Dataset):
         self.data = data # list of all the files in the dataset
         self.labels = labels # list of all the labels        
 
-        # for class_name, label in self.class_map.items():
-        #     class_folder = os.path.join(path, class_name)
-        #     images = [os.path.join(class_folder, img) for img in os.listdir(class_folder) if img.endswith(".jpg")]
-        #     self.data.extend(images)
-        #     self.labels.extend([label] * len(images))
-
         self.transform = transforms.Compose(
             [
                 transforms.Grayscale(),  # Convert the image to grayscale
@@ -87,80 +86,8 @@ class ShipDataset(Dataset):
         label = self.labels[idx]
         label = torch.tensor(label, dtype=torch.long)
         return {"img": img, "label": label}
-
-def main(args) -> None:
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
-    time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    args.output_dir = os.path.join(args.output_dir, time)
-    os.makedirs(os.path.join(args.output_dir, "saved_models"), exist_ok=True)
-
-    image_folder = r"/home/cwu/Documents/NathanProject/archive/train/images"
-
-    data_df = pd.read_csv(r"/home/cwu/Documents/NathanProject/archive/sample_submission_ns2btKE.csv")
-    X, y = data_df['image'], data_df['category']
-
-    # Split train/val/test as 75/15/10
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)    
-    X_val, X_test, y_val, y_test = train_test_split(X_test, y_test, test_size=0.1/(0.1 + 0.15)) 
-
-    # train_df = pd.read_csv(r"/home/cwu/Documents/NathanProject/archive/train/train.csv")
-    # X, y = train_df['image'], train_df['category']
-    # X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.1)
-
-    # test_df = pd.read_csv(r"/home/cwu/Documents/NathanProject/archive/test_ApKoW4T.csv")
-    # X_test, y_test = test_df['image'], test_df['category']
-
-    train_dataset = ShipDataset(image_folder, list(X_train), list(y_train))
-    valid_dataset = ShipDataset(image_folder, list(X_val), list(y_val))
-    # test_dataset = ShipDataset(image_folder, list(X_test), list(y_test))
-
-    train_dataloader = DataLoader(
-        train_dataset, batch_size=args.batch_size, num_workers=0)#, shuffle=True)
-    valid_dataloader = DataLoader(
-        valid_dataset, batch_size=args.batch_size, num_workers=0)#, shuffle=False)
-    # test_dataloader = DataLoader(
-    #     test_dataset, batch_size=args.batch_size, num_workers=0)#, shuffle=False)
-
-    epoch_start, epoch_end = 0, args.n_epochs
-    best_loss_val = float("inf")
-    class_freqs = np.bincount([sample["label"] for sample in train_dataset]) / len(
-        train_dataset
-    )
-    class_freqs = torch.tensor(class_freqs, device=device, dtype=torch.float32)
-    n_classes = len(class_freqs)
-    n_patches = (                                # H x W / patch_size^2
-        train_dataset[0]["img"].shape[-1]
-        * train_dataset[0]["img"].shape[-2]
-        // model_default_args["patch_size"] ** 2
-    )
-    loss_fn = nn.CrossEntropyLoss().to(device)
-
-    if args.resume_training:
-        checkpoint = torch.load(args.saved_model_path, map_location=device)
-        model_args = checkpoint["model_args"]
-        epoch_start = checkpoint["epoch"] + 1
-        epoch_end = args.n_epochs + epoch_start
-        best_loss_val = checkpoint["best_loss_val"]
-        model = VisionTransformer(**model_args).to(device)
-        state_dict = checkpoint["model_state_dict"]
-        # fix the keys of the state dictionary.
-        unwanted_prefix = "_orig_mod."
-        for k, v in list(state_dict.items()):
-            if k.startswith(unwanted_prefix):
-                state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
-
-        model.load_state_dict(state_dict)
-        optimiser = optim.Adam(model.parameters(), lr=args.learning_rate)
-        optimiser.load_state_dict(checkpoint["optimiser_state_dict"])
-        print("[train.py]: Resuming training...")
-    else:
-        model_args = dict(
-            n_classes=n_classes, class_freqs=class_freqs, n_patches=n_patches, **model_default_args
-        )
-        model = VisionTransformer(**model_args).to(device)
-        optimiser = optim.Adam(model.parameters(), lr=args.learning_rate)
-
+    
+def train(model, optimiser, args, model_args, loss_fn, train_dataloader, valid_dataloader, epoch_start, epoch_end, best_loss_val):
     model.train()
     print(model)
     if args.compile:
@@ -258,12 +185,98 @@ def main(args) -> None:
                 checkpoint,
                 os.path.join(args.output_dir, "saved_models", "0.pt"),
             )
+    return
+
+def main(args) -> None:
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    args.output_dir = os.path.join(args.output_dir, time)
+    os.makedirs(os.path.join(args.output_dir, "saved_models"), exist_ok=True)
+
+    image_folder = r"/home/cwu/Documents/AMATH445_Project/archive/train/images"
+
+    data_df = pd.read_csv(r"/home/cwu/Documents/AMATH445_Project/archive/sample_submission_ns2btKE.csv")
+    X, y = data_df['image'], data_df['category']
+
+    # Split train/val/test as 75/15/10
+    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)    
+    # X_val, X_test, y_val, y_test = train_test_split(X_test, y_test, test_size=0.1/(0.1 + 0.15)) 
+
+    train_df = pd.read_csv(r"/home/cwu/Documents/AMATH445_Project/archive/train/train.csv")
+    X, y = train_df['image'], train_df['category']
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.1)
+
+    # test_df = pd.read_csv(r"/home/cwu/Documents/AMATH445_Project/archive/test_ApKoW4T.csv")
+    # X_test, y_test = test_df['image'], test_df['category']
+
+    train_dataset = ShipDataset(image_folder, list(X_train), list(y_train))
+    valid_dataset = ShipDataset(image_folder, list(X_val), list(y_val))
+    # test_dataset = ShipDataset(image_folder, list(X_test), list(y_test))
+
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=args.batch_size, num_workers=0)
+    valid_dataloader = DataLoader(
+        valid_dataset, batch_size=args.batch_size, num_workers=0)
+    # test_dataloader = DataLoader(
+    #     test_dataset, batch_size=args.batch_size, num_workers=0)
+
+    epoch_start, epoch_end = 0, args.n_epochs
+    best_loss_val = float("inf")
+    class_freqs = np.bincount([sample["label"] for sample in train_dataset]) / len(
+        train_dataset
+    )
+    class_freqs = torch.tensor(class_freqs, device=device, dtype=torch.float32)
+    n_classes = len(class_freqs)
+    n_patches = (                                # H x W / patch_size^2
+        train_dataset[0]["img"].shape[-1]
+        * train_dataset[0]["img"].shape[-2]
+        // model_default_args["patch_size"] ** 2
+    )
+    loss_fn = nn.CrossEntropyLoss().to(device)
+
+    if args.resume_training:
+        checkpoint = torch.load(args.saved_model_path, map_location=device)
+        model_args = checkpoint["model_args"]
+        epoch_start = checkpoint["epoch"] + 1
+        epoch_end = args.n_epochs + epoch_start
+        best_loss_val = checkpoint["best_loss_val"]
+        model = VisionTransformer(**model_args).to(device)
+        state_dict = checkpoint["model_state_dict"]
+        # fix the keys of the state dictionary.
+        unwanted_prefix = "_orig_mod."
+        for k, v in list(state_dict.items()):
+            if k.startswith(unwanted_prefix):
+                state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
+
+        model.load_state_dict(state_dict)
+        optimiser = optim.Adam(model.parameters(), lr=args.learning_rate)
+        optimiser.load_state_dict(checkpoint["optimiser_state_dict"])
+        print("[train.py]: Resuming training...")
+    else:
+        model_args = dict(
+            n_classes=n_classes, class_freqs=class_freqs, n_patches=n_patches, **model_default_args
+        )
+        model = VisionTransformer(**model_args).to(device)
+        optimiser = optim.Adam(model.parameters(), lr=args.learning_rate)
+
+    train(model, optimiser, args, model_args, loss_fn, train_dataloader, valid_dataloader, epoch_start, epoch_end, best_loss_val)
 
     return
 
 torch.cuda.empty_cache()  
 main(args)
 
-
 if __name__ == "__main__":
-    main(args)
+
+    # Tune learning rate
+    arg_1 = Args(0.1)
+    main(arg_1)
+
+    # arg_2 = Args(0.01)
+    # main(arg_2)
+
+    # arg_3 = Args(0.001)
+    # main(arg_3)
+    
+    # main(args)
