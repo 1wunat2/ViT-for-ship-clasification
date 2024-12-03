@@ -63,8 +63,30 @@ ship_map = {
 rev_map = dict([[v,k] for k,v in ship_map.items()])
 
 
+####################
+# Add gaussian noise to an image
+def add_gaussian_noise(image, mean=0, std=0.1):
+    np_image = np.array(image) / 255.0  
+    noise = np.random.normal(mean, std, np_image.shape)
+    image_w_noise = np.clip(np_image + noise, 0, 1) 
+    image_w_noise = (image_w_noise * 255).astype(np.uint8)
+    return Image.fromarray(image_w_noise)
+
+# Apply transformations
+apply_transformations = transforms.Compose([
+    transforms.RandomRotation(degrees=20),   # Randomly rotate image +/- 20 degrees 
+    transforms.ColorJitter(brightness=0.25),  # Randomly add brightness adjustment +/- 25%
+    transforms.Lambda(lambda img: add_gaussian_noise(img, std=0.05)),  # Add Gaussian noise
+    transforms.ToTensor(),                   # Convert image to tensor
+])
+
+####################
+
+
+
 class ShipDataset(Dataset):
     def __init__(self, path, data, labels):
+        
         self.path = path  # Path to the dataset
         self.data = data # list of all the files in the dataset
         self.labels = labels # list of all the labels        
@@ -83,6 +105,7 @@ class ShipDataset(Dataset):
     def __getitem__(self, idx):
         img = Image.open(os.path.join(self.path, self.data[idx]))
         img = self.transform(img)
+        img = apply_transformations(img)
         label = self.labels[idx]
         label = torch.tensor(label, dtype=torch.long)
         return {"img": img, "label": label}
