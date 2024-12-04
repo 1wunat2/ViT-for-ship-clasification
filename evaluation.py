@@ -1,3 +1,7 @@
+"""
+evaluation.py contains all of the function for evaluation, creating the confusion matrix and getting
+the evaluation metrics
+"""
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -19,8 +23,8 @@ def conf_matrix_plot(cf_matrix: np.ndarray, title: str = ""):
         annot=True,
         fmt="d",
         cmap="Blues",
-        xticklabels=range(10),
-        yticklabels=range(10),
+        xticklabels=range(5),
+        yticklabels=range(5),
         ax=axs,
     )
     fig.suptitle(title)
@@ -28,6 +32,10 @@ def conf_matrix_plot(cf_matrix: np.ndarray, title: str = ""):
 
 
 def evaluation_metrics(y_true: np.ndarray, y_preds: np.ndarray):
+    """
+    Return a dictionary of the evaluation metrics calculated
+    Accuracy, f1 score, precision and recall
+    """
     conf_matrix = confusion_matrix(y_true, y_preds)
     accuracy, f1, precision, recall = (
         accuracy_score(y_true, y_preds),

@@ -1,3 +1,7 @@
+"""
+main.py is where the code is run from. Set up parameters here, under args and call main(args)
+"""
+
 import os
 import datetime
 from tqdm import tqdm
@@ -20,17 +24,18 @@ from ViT import VisionTransformer, perform_inference
 import pandas as pd
 from pathlib import Path
 
+# Set up base variables and parameters
 model_default_args = dict(
     in_channels=1,           
-    patch_size=7,
-    emb_size=64,
+    patch_size=16,
+    emb_size=256,
     n_heads=8,
     n_layers=6,
 )
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(device)
-wandb_project = "LearningRate"
+wandb_project = "AMATH445_FinalProject"
 
 class Args:
     batch_size = 1
@@ -64,6 +69,8 @@ rev_map = dict([[v,k] for k,v in ship_map.items()])
 
 
 ####################
+# These are the extra image preprocessing added in on top of the base model
+
 # Add gaussian noise to an image
 def add_gaussian_noise(image, mean=0, std=0.1):
     np_image = np.array(image) / 255.0  
@@ -82,11 +89,11 @@ apply_transformations = transforms.Compose([
 
 ####################
 
-
-
 class ShipDataset(Dataset):
+    """
+    This is the data loader specific fo the ship data set
+    """
     def __init__(self, path, data, labels):
-        
         self.path = path  # Path to the dataset
         self.data = data # list of all the files in the dataset
         self.labels = labels # list of all the labels        
@@ -94,8 +101,10 @@ class ShipDataset(Dataset):
         self.transform = transforms.Compose(
             [
                 transforms.Grayscale(),  # Convert the image to grayscale
-                transforms.Resize((28, 28)),  # Resize the image to 28x28
-                transforms.ToTensor(),  # Convert the image to a PyTorch tensor
+                transforms.Resize((64, 64)),  # Resize the image (64x64 does not scale up any image)
+
+                # Uncomment if second transformation function is removed (for base model)
+                # transforms.ToTensor(),  # Convert the image to a PyTorch tensor
             ]
         )
 
@@ -111,6 +120,12 @@ class ShipDataset(Dataset):
         return {"img": img, "label": label}
     
 def train(model, optimiser, args, model_args, loss_fn, train_dataloader, valid_dataloader, epoch_start, epoch_end, best_loss_val):
+    """
+    Training function takes in the model, optimizer and any other necessary parameter to train the data
+    using the training and validation set
+
+    Nothing is returned the model gets save and the plots are saved both locally and online with wandb
+    """
     model.train()
     print(model)
     if args.compile:
@@ -219,31 +234,27 @@ def main(args) -> None:
 
     image_folder = r"/home/cwu/Documents/AMATH445_Project/archive/train/images"
 
-    data_df = pd.read_csv(r"/home/cwu/Documents/AMATH445_Project/archive/sample_submission_ns2btKE.csv")
-    X, y = data_df['image'], data_df['category']
+    # data_df = pd.read_csv(r"/home/cwu/Documents/AMATH445_Project/archive/sample_submission_ns2btKE.csv")
+    # X, y = data_df['image'], data_df['category']
 
-    # Split train/val/test as 75/15/10
-    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)    
-    # X_val, X_test, y_val, y_test = train_test_split(X_test, y_test, test_size=0.1/(0.1 + 0.15)) 
-
+    # Read in train and validation dataset
     train_df = pd.read_csv(r"/home/cwu/Documents/AMATH445_Project/archive/train/train.csv")
     X, y = train_df['image'], train_df['category']
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.1)
 
-    # test_df = pd.read_csv(r"/home/cwu/Documents/AMATH445_Project/archive/test_ApKoW4T.csv")
-    # X_test, y_test = test_df['image'], test_df['category']
-
     train_dataset = ShipDataset(image_folder, list(X_train), list(y_train))
     valid_dataset = ShipDataset(image_folder, list(X_val), list(y_val))
+
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=0)
+    valid_dataloader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=0)
+
+    # Read in test dataset
+    # test_df = pd.read_csv(r"/home/cwu/Documents/AMATH445_Project/archive/test_ApKoW4T.csv")
+    # X_test, y_test = test_df['image'], test_df['category']    
     # test_dataset = ShipDataset(image_folder, list(X_test), list(y_test))
+    # test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=0)
 
-    train_dataloader = DataLoader(
-        train_dataset, batch_size=args.batch_size, num_workers=0)
-    valid_dataloader = DataLoader(
-        valid_dataset, batch_size=args.batch_size, num_workers=0)
-    # test_dataloader = DataLoader(
-    #     test_dataset, batch_size=args.batch_size, num_workers=0)
-
+    # Set up training parameters
     epoch_start, epoch_end = 0, args.n_epochs
     best_loss_val = float("inf")
     class_freqs = np.bincount([sample["label"] for sample in train_dataset]) / len(
@@ -292,14 +303,11 @@ main(args)
 
 if __name__ == "__main__":
 
-    # Tune learning rate
-    arg_1 = Args(0.1)
-    main(arg_1)
+    lr = args.learning_rate
+    batch_size = args.batch_size
+    n_epochs = args.n_epochs
 
-    # arg_2 = Args(0.01)
-    # main(arg_2)
-
-    # arg_3 = Args(0.001)
-    # main(arg_3)
+    # If wanted to run on other parameters we can just change the values in args
+    # args = Args(0.001, 10, 32)
     
-    # main(args)
+    main(args)

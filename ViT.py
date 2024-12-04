@@ -1,3 +1,8 @@
+"""
+ViT.py contains the architecture for the Visual Transformer
+The structure and style follows from the code posted during tutorial for AMATH 445
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -44,6 +49,9 @@ def init_weights(module):
 
 
 class Head(nn.Module):
+    """
+    Single head for attention based learning
+    """
     def __init__(self, head_size, n_embed, dropout=0.2):
         super().__init__()
         self.key = nn.Linear(n_embed, head_size, bias=False)
@@ -60,6 +68,9 @@ class Head(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
+    """
+    Combines multiple heads to get multihead attention based learning
+    """
     def __init__(self, head_size, n_heads, n_embed, dropout=0.2):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size, n_embed) for _ in range(n_heads)])
@@ -73,6 +84,9 @@ class MultiHeadAttention(nn.Module):
 
 
 class MLP(nn.Module):
+    """
+    Basic MLP, designed with Visual Transformer in mind by increading and then decreasing the number of neurons
+    """
     def __init__(self, n_embed, dropout=0.2):
         super().__init__()
         self.net = nn.Sequential(
@@ -87,6 +101,9 @@ class MLP(nn.Module):
 
 
 class Block(nn.Module):
+    """
+    Block combines the multihead attention and MLP defined
+    """
     def __init__(self, n_heads, n_embed, dropout=0.2):
         super().__init__()
         head_size = n_embed // n_heads
@@ -102,6 +119,11 @@ class Block(nn.Module):
 
 
 class PatchEmbedding(nn.Module):
+    """
+    Patch Embedding Module:
+    - Splits an image into patches
+    - Projects patches into a higher-dimensional embedding space
+    """
     def __init__(self, in_channels, patch_size, emb_size):
         super().__init__()
         self.projection = nn.Conv2d(
@@ -119,6 +141,9 @@ class PatchEmbedding(nn.Module):
 
 
 class VisionTransformer(nn.Module):
+    """
+    VisonTransformer combines the Block and embedding to create the VisualTransformer
+    """
     def __init__(
         self,
         in_channels,
